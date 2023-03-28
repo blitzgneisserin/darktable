@@ -72,6 +72,9 @@ static void bauhaus_request_focus(dt_bauhaus_widget_t *w)
 {
   if(w->module && w->module->type == DT_ACTION_TYPE_IOP_INSTANCE)
       dt_iop_request_focus((dt_iop_module_t *)w->module);
+  else if(dt_action_lib(w->module))
+    darktable.lib->gui_module = dt_action_lib(w->module);
+
   gtk_widget_set_state_flags(GTK_WIDGET(w), GTK_STATE_FLAG_FOCUSED, FALSE);
 }
 
@@ -2596,9 +2599,10 @@ static void _slider_add_step(GtkWidget *widget, float delta, guint state, gboole
     if(d->factor < 0 ? d->pos < 0.0001 : d->pos > 0.9999) d->max = d->max < d->soft_max ? d->min : d->soft_max;
     dt_bauhaus_slider_set(widget, value + delta);
   }
-  else if(!strcmp(d->format,"°") && (d->max - d->min) * d->factor == 360.0f
+  else if(!strcmp(d->format,"°")
+          && fabsf((d->max - d->min) * d->factor - 360.0f) < 1e-4
           && fabsf(value + delta)/(d->max - d->min) < 2)
-    dt_bauhaus_slider_set(widget, fmodf(value + delta + d->max - 2*d->min, d->max - d->min) + d->min);
+    dt_bauhaus_slider_set(widget, value + delta);
   else
     dt_bauhaus_slider_set(widget, CLAMP(value + delta, d->min, d->max));
 }
@@ -2751,9 +2755,16 @@ void dt_bauhaus_slider_set(GtkWidget *widget, float pos)
   if(w->type != DT_BAUHAUS_SLIDER) return;
   dt_bauhaus_slider_data_t *d = &w->data.slider;
   const float rpos = CLAMP(pos, d->hard_min, d->hard_max);
-  d->min = MIN(d->min, rpos);
-  d->max = MAX(d->max, rpos);
-  const float rawval = (rpos - d->min) / (d->max - d->min);
+  // if this is an angle or gradient, wrap around
+  // don't wrap yet if exactly at min or max
+  const float gpos = rpos == pos || strcmp(d->format,"°") ? rpos :
+                     d->hard_min + fmodf(pos + d->hard_max - 2*d->hard_min,
+                                         d->hard_max - d->hard_min);
+  // set new temp range to include new value
+  // if angle has wrapped around, then set to full range
+  d->min = (gpos == rpos) ? MIN(d->min, rpos) : d->hard_min;
+  d->max = (gpos == rpos) ? MAX(d->max, rpos) : d->hard_max;;
+  const float rawval = (gpos - d->min) / (d->max - d->min);
   dt_bauhaus_slider_set_normalized(w, d->curve(rawval, DT_BAUHAUS_SET));
 }
 
