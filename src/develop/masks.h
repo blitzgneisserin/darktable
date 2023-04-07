@@ -210,10 +210,10 @@ typedef struct dt_masks_functions_t
                        struct dt_masks_form_gui_t *gui,
                        const int index,
                        const int num_points,
-                       int *inside,
-                       int *inside_border,
+                       gboolean *inside,
+                       gboolean *inside_border,
                        int *near,
-                       int *inside_source,
+                       gboolean *inside_source,
                        float *dist);
   int (*get_points)(dt_develop_t *dev,
                     const float x,
@@ -618,6 +618,15 @@ float dt_masks_drag_factor(dt_masks_form_gui_t *gui,
                            const int k,
                            const gboolean border);
 
+float dt_masks_change_size(gboolean up,
+                           const float value,
+                           const float min,
+                           const float max);
+
+float dt_masks_change_rotation(gboolean up,
+                               const float value,
+                               const gboolean is_degree);
+
 /** allow to select a shape inside an iop */
 void dt_masks_select_form(struct dt_iop_module_t *module,
                           dt_masks_form_t *sel);
@@ -923,6 +932,15 @@ void dt_masks_stroke_arrow(cairo_t *cr,
                            const dt_masks_form_gui_t *gui,
                            const int group,
                            const float zoom_scale);
+
+/* set line width for the mask drawing depending on the status
+   border, source & selected
+*/
+void dt_masks_line_stroke(cairo_t *cr,
+                          const gboolean border,
+                          const gboolean source,
+                          const gboolean selected,
+                          const float zoom_scale);
 
 #ifdef __cplusplus
 } // extern "C"

@@ -48,6 +48,11 @@ static void _path_bounding_box(const float *const points,
                                int *posx,
                                int *posy);
 
+static inline int _nb_ctrl_point(const int nb_point)
+{
+  return nb_point * 3;
+}
+
 /** get the point of the path at pos t [0,1]  */
 static void _path_get_XY(const float p0x,
                          const float p0y,
@@ -473,7 +478,7 @@ static int _path_find_self_intersection(dt_masks_dynbuf_t *inter,
   int xmin = INT_MAX, xmax = INT_MIN, ymin = INT_MAX, ymax = INT_MIN;
   int posextr[4] = { -1 }; // xmin,xmax,ymin,ymax
 
-  for(int i = nb_corners * 3; i < border_count; i++)
+  for(int i = _nb_ctrl_point(nb_corners); i < border_count; i++)
   {
     if(isnan(border[i * 2]) || isnan(border[i * 2 + 1]))
     {
@@ -528,11 +533,11 @@ static int _path_find_self_intersection(dt_masks_dynbuf_t *inter,
   int lastx = border[(posextr[1] - 1) * 2];
   int lasty = border[(posextr[1] - 1) * 2 + 1];
 
-  for(int ii = nb_corners * 3; ii < border_count; ii++)
+  for(int ii = _nb_ctrl_point(nb_corners); ii < border_count; ii++)
   {
     // we want to loop from one border extremity
-    int i = ii - nb_corners * 3 + posextr[1];
-    if(i >= border_count) i = i - border_count + nb_corners * 3;
+    int i = ii - _nb_ctrl_point(nb_corners) + posextr[1];
+    if(i >= border_count) i = i - border_count + _nb_ctrl_point(nb_corners);
 
     if(inter_count >= nb_corners * 4) break;
 
@@ -943,7 +948,7 @@ static int _path_get_pts_border(dt_develop_t *dev,
           }
           else
           {
-            if(w > nb * 3)
+            if(w > _nb_ctrl_point(nb))
             {
               if(isnan((*border)[nb * 6]) && isnan((*border)[nb * 6 + 1]))
                 (*border)[nb * 6 + 1] = w;
@@ -990,16 +995,16 @@ static void _path_get_distance(const float x,
                                dt_masks_form_gui_t *gui,
                                const int index,
                                const int corner_count,
-                               int *inside,
-                               int *inside_border,
+                               gboolean *inside,
+                               gboolean *inside_border,
                                int *near,
-                               int *inside_source,
+                               gboolean *inside_source,
                                float *dist)
 {
   // initialise returned values
-  *inside_source = 0;
-  *inside = 0;
-  *inside_border = 0;
+  *inside_source = FALSE;
+  *inside = FALSE;
+  *inside_border = FALSE;
   *near = -1;
   *dist = FLT_MAX;
 
@@ -1012,13 +1017,13 @@ static void _path_get_distance(const float x,
   // we first check if we are inside the source form
   if(dt_masks_point_in_form_exact(x, y, gpt->source, corner_count * 6, gpt->source_count))
   {
-    *inside_source = 1;
-    *inside = 1;
+    *inside_source = TRUE;
+    *inside = TRUE;
 
     float x_min = FLT_MAX, y_min = FLT_MAX;
     float x_max = FLT_MIN, y_max = FLT_MIN;
 
-    for(int i = corner_count * 3; i < gpt->source_count; i++)
+    for(int i = _nb_ctrl_point(corner_count); i < gpt->source_count; i++)
     {
       const float xx = gpt->source[i * 2];
       const float yy = gpt->source[i * 2 + 1];
@@ -1041,13 +1046,14 @@ static void _path_get_distance(const float x,
   }
 
   // we check if it's inside borders
-  if(!dt_masks_point_in_form_exact(x, y, gpt->border, corner_count * 3, gpt->border_count))
+  if(!dt_masks_point_in_form_exact(x, y, gpt->border,
+                                   _nb_ctrl_point(corner_count), gpt->border_count))
     return;
 
-  *inside = 1;
+  *inside = TRUE;
 
   // and we check if it's inside form
-  if(gpt->points_count > 2 + corner_count * 3)
+  if(gpt->points_count > 2 + _nb_ctrl_point(corner_count))
   {
     const float as2 = as * as;
     //float as2 = 1600.0 * as1;
@@ -1059,13 +1065,14 @@ static void _path_get_distance(const float x,
     float x_min = FLT_MAX, y_min = FLT_MAX;
     float x_max = FLT_MIN, y_max = FLT_MIN;
 
-    for(int i = corner_count * 3; i < gpt->points_count; i++)
+    for(int i = _nb_ctrl_point(corner_count); i < gpt->points_count; i++)
     {
       //if we need to jump to skip points (in case of deleted point,
       //because of self-intersection)
       if(isnan(gpt->points[i * 2]))
       {
-        if(isnan(gpt->points[i * 2 + 1])) break;
+        if(isnan(gpt->points[i * 2 + 1]))
+          break;
         i = (int)gpt->points[i * 2 + 1] - 1;
         continue;
       }
@@ -1096,7 +1103,9 @@ static void _path_get_distance(const float x,
           *near = current_seg - 1;
       }
 
-      if(((y<=yy && y>last) || (y>=yy && y<last)) && (gpt->points[i * 2] > x)) nb++;
+      if(((y<=yy && y>last) || (y>=yy && y<last))
+         && (gpt->points[i * 2] > x))
+        nb++;
 
       last = yy;
     }
@@ -1107,7 +1116,8 @@ static void _path_get_distance(const float x,
     const float dd = sqf(cx) + sqf(cy);
     *dist = fminf(*dist, dd);
   }
-  else *inside_border = 1;
+  else
+    *inside_border = TRUE;
 }
 
 static int _path_get_points_border(dt_develop_t *dev,
@@ -1156,7 +1166,6 @@ static int _path_events_mouse_scrolled(struct dt_iop_module_t *module,
     }
     else
     {
-      const float amount = up ? 1.03f : 1.0f / 1.03f;
       // resize don't care where the mouse is inside a shape
       if(dt_modifier_is(state, GDK_SHIFT_MASK))
       {
@@ -1166,7 +1175,7 @@ static int _path_events_mouse_scrolled(struct dt_iop_module_t *module,
         for(const GList *l = form->points; l; l = g_list_next(l))
         {
           const dt_masks_point_path_t *point = (dt_masks_point_path_t *)l->data;
-          if(amount > 1.0f
+          if(up
              && (point->border[0] > 1.0f
                  || point->border[1] > 1.0f))
             return 1;
@@ -1174,12 +1183,27 @@ static int _path_events_mouse_scrolled(struct dt_iop_module_t *module,
         for(const GList *l = form->points; l; l = g_list_next(l))
         {
           dt_masks_point_path_t *point = (dt_masks_point_path_t *)l->data;
-          point->border[0] *= amount;
-          point->border[1] *= amount;
+
+          point->border[0] = dt_masks_change_size
+            (up,
+             point->border[0],
+             0.0005f,
+             0.5f);
+          point->border[1] = dt_masks_change_size
+            (up,
+             point->border[1],
+             0.0005f,
+             0.5f);
+
           feather_size += point->border[0] + point->border[1];
         }
-        float masks_border = dt_conf_get_float(DT_MASKS_CONF(form->type, path, border));
-        masks_border = MAX(0.0005f, MIN(masks_border * amount, 0.5f));
+
+        const float masks_border = dt_masks_change_size
+          (up,
+           dt_conf_get_float(DT_MASKS_CONF(form->type, path, border)),
+           0.0005f,
+           0.5f);
+
         dt_conf_set_float(DT_MASKS_CONF(form->type, path, border), masks_border);
         dt_toast_log(_("feather size: %3.2f%%"),
                      feather_size * 50.0f / g_list_length(form->points));
@@ -1216,21 +1240,25 @@ static int _path_events_mouse_scrolled(struct dt_iop_module_t *module,
         by /= 3.0f * surf;
 
         surf = sqrtf(fabsf(surf));
-        if(amount < 1.0f && surf < 0.001f) return 1;
-        if(amount > 1.0f && surf > 2.0f) return 1;
+        if(!up && surf < 0.001f) return 1;
+        if(up && surf > 2.0f) return 1;
 
         // now we move each point
         for(GList *l = form->points; l; l = g_list_next(l))
         {
           dt_masks_point_path_t *point = (dt_masks_point_path_t *)l->data;
-          const float x = (point->corner[0] - bx) * amount;
-          const float y = (point->corner[1] - by) * amount;
+          const float x = dt_masks_change_size(up, point->corner[0] - bx, -FLT_MAX, FLT_MAX);
+          const float y = dt_masks_change_size(up, point->corner[1] - by, -FLT_MAX, FLT_MAX);
 
           // we stretch ctrl points
-          const float ct1x = (point->ctrl1[0] - point->corner[0]) * amount;
-          const float ct1y = (point->ctrl1[1] - point->corner[1]) * amount;
-          const float ct2x = (point->ctrl2[0] - point->corner[0]) * amount;
-          const float ct2y = (point->ctrl2[1] - point->corner[1]) * amount;
+          const float ct1x = dt_masks_change_size
+            (up, point->ctrl1[0] - point->corner[0], -FLT_MAX, FLT_MAX);
+          const float ct1y = dt_masks_change_size
+            (up, point->ctrl1[1] - point->corner[1], -FLT_MAX, FLT_MAX);
+          const float ct2x = dt_masks_change_size
+            (up, point->ctrl2[0] - point->corner[0], -FLT_MAX, FLT_MAX);
+          const float ct2y = dt_masks_change_size
+            (up, point->ctrl2[1] - point->corner[1], -FLT_MAX, FLT_MAX);
 
           // and we set the new points
           point->corner[0] = bx + x;
@@ -1244,7 +1272,8 @@ static int _path_events_mouse_scrolled(struct dt_iop_module_t *module,
         // now the redraw/save stuff
         _path_init_ctrl_points(form);
 
-        dt_toast_log(_("size: %3.2f%%"), surf * amount * 50.0f);
+        surf = dt_masks_change_size(up, surf, -FLT_MAX, FLT_MAX);
+        dt_toast_log(_("size: %3.2f%%"), surf * 50.0f);
       }
       else
       {
@@ -2157,7 +2186,8 @@ static int _path_events_mouse_moved(struct dt_iop_module_t *module,
   }
 
   // are we inside the form or the borders or near a segment ???
-  int in = 0, inb = 0, near = 0, ins = 0;
+  gboolean in = FALSE, inb = FALSE, ins = FALSE;
+  int near = 0;
   float dist = 0;
   _path_get_distance(pzx, (int)pzy, as, gui, index, nb, &in, &inb, &near, &ins, &dist);
   gui->seg_selected = near;
@@ -2192,23 +2222,17 @@ static void _path_events_post_expose(cairo_t *cr,
                                      const int index,
                                      const int nb)
 {
-  double dashed[] = { 4.0, 4.0 };
-  dashed[0] /= zoom_scale;
-  dashed[1] /= zoom_scale;
-  const int len = sizeof(dashed) / sizeof(dashed[0]);
   if(!gui) return;
   dt_masks_form_gui_points_t *gpt =
     (dt_masks_form_gui_points_t *)g_list_nth_data(gui->points, index);
   if(!gpt) return;
 
   // draw path
-  if(gpt->points_count > nb * 3 + 6)
+  if(gpt->points_count > _nb_ctrl_point(nb) + 6)
   {
-    cairo_set_dash(cr, dashed, 0, 0);
-
     cairo_move_to(cr, gpt->points[nb * 6], gpt->points[nb * 6 + 1]);
     int seg = 1, seg2 = 0;
-    for(int i = nb * 3; i < gpt->points_count; i++)
+    for(int i = _nb_ctrl_point(nb); i < gpt->points_count; i++)
     {
       cairo_line_to(cr, gpt->points[i * 2], gpt->points[i * 2 + 1]);
       // we decide to highlight the form segment by segment
@@ -2216,20 +2240,12 @@ static void _path_events_post_expose(cairo_t *cr,
          && gpt->points[i * 2] == gpt->points[seg * 6 + 2])
       {
         // this is the end of the last segment, so we have to draw it
-        if((gui->group_selected == index)
-           && (gui->form_selected || gui->form_dragging || gui->seg_selected == seg2))
-          cairo_set_line_width(cr, 5.0 / zoom_scale);
-        else
-          cairo_set_line_width(cr, 3.0 / zoom_scale);
-        dt_draw_set_color_overlay(cr, FALSE, 0.8);
-        cairo_stroke_preserve(cr);
-        if((gui->group_selected == index)
-           && (gui->form_selected || gui->form_dragging || gui->seg_selected == seg2))
-          cairo_set_line_width(cr, 2.0 / zoom_scale);
-        else
-          cairo_set_line_width(cr, 1.0 / zoom_scale);
-        dt_draw_set_color_overlay(cr, TRUE, 0.8);
-        cairo_stroke(cr);
+
+        dt_masks_line_stroke
+          (cr, FALSE, FALSE,
+           (gui->group_selected == index)
+           && (gui->form_selected || gui->form_dragging || gui->seg_selected == seg2),
+           zoom_scale);
         // and we update the segment number
         seg = (seg + 1) % nb;
         seg2++;
@@ -2239,7 +2255,7 @@ static void _path_events_post_expose(cairo_t *cr,
   }
 
   // draw corners
-  if(gui->group_selected == index && gpt->points_count > nb * 3 + 6)
+  if(gui->group_selected == index && gpt->points_count > _nb_ctrl_point(nb) + 6)
   {
     for(int k = 0; k < nb; k++)
       dt_masks_draw_anchor(cr,
@@ -2268,12 +2284,8 @@ static void _path_events_post_expose(cairo_t *cr,
                            &ffx, &ffy, gpt->clockwise);
     cairo_move_to(cr, gpt->points[k * 6 + 2], gpt->points[k * 6 + 3]);
     cairo_line_to(cr, ffx, ffy);
-    cairo_set_line_width(cr, 1.5 / zoom_scale);
-    dt_draw_set_color_overlay(cr, FALSE, 0.8);
-    cairo_stroke_preserve(cr);
-    cairo_set_line_width(cr, 0.75 / zoom_scale);
-    dt_draw_set_color_overlay(cr, TRUE, 0.8);
-    cairo_stroke(cr);
+
+    dt_masks_line_stroke(cr, TRUE, FALSE, FALSE, zoom_scale);
 
     if(k == gui->feather_dragging || k == gui->feather_selected)
       cairo_arc(cr, ffx, ffy, 3.0f / zoom_scale, 0, 2.0 * M_PI);
@@ -2290,10 +2302,10 @@ static void _path_events_post_expose(cairo_t *cr,
   // draw border and corners
   if((gui->show_all_feathers
       || gui->group_selected == index)
-     && gpt->border_count > nb * 3 + 6)
+     && gpt->border_count > _nb_ctrl_point(nb) + 6)
   {
     int dep = 1;
-    for(int i = nb * 3; i < gpt->border_count; i++)
+    for(int i = _nb_ctrl_point(nb); i < gpt->border_count; i++)
     {
       if(isnan(gpt->border[i * 2]))
       {
@@ -2310,20 +2322,7 @@ static void _path_events_post_expose(cairo_t *cr,
         cairo_line_to(cr, gpt->border[i * 2], gpt->border[i * 2 + 1]);
     }
     // we execute the drawing
-    if(gui->border_selected)
-      cairo_set_line_width(cr, 2.0 / zoom_scale);
-    else
-      cairo_set_line_width(cr, 1.0 / zoom_scale);
-    dt_draw_set_color_overlay(cr, FALSE, 0.8);
-    cairo_set_dash(cr, dashed, len, 0);
-    cairo_stroke_preserve(cr);
-    if(gui->border_selected)
-      cairo_set_line_width(cr, 2.0 / zoom_scale);
-    else
-      cairo_set_line_width(cr, 1.0 / zoom_scale);
-    dt_draw_set_color_overlay(cr, TRUE, 0.8);
-    cairo_set_dash(cr, dashed, len, 4);
-    cairo_stroke(cr);
+    dt_masks_line_stroke(cr, TRUE, FALSE, gui->border_selected, zoom_scale);
 
     // we draw the path segment by segment
     for(int k = 0; k < nb; k++)
@@ -2373,7 +2372,7 @@ static void _path_events_post_expose(cairo_t *cr,
   }
 
   // draw the source if needed
-  if(!gui->creation && gpt->source_count > nb * 3 + 6)
+  if(!gui->creation && gpt->source_count > _nb_ctrl_point(nb) + 6)
   {
     // look for the destination point closest to the source to avoid
     // the arrow to cross the mask.
@@ -2398,14 +2397,14 @@ static void _path_events_post_expose(cairo_t *cr,
 
     // 3. dest border, closest to source area center
     dt_masks_closest_point(gpt->points_count,
-                           nb * 3,
+                           _nb_ctrl_point(nb),
                            gpt->points,
                            center_x, center_y,
                            &to_x, &to_y);
 
     // 4. source border, closest to point border
     dt_masks_closest_point(gpt->source_count,
-                           nb * 3,
+                           _nb_ctrl_point(nb),
                            gpt->source,
                            to_x, to_y,
                            &from_x, &from_y);
@@ -2420,29 +2419,17 @@ static void _path_events_post_expose(cairo_t *cr,
     dt_masks_stroke_arrow(cr, gui, index, zoom_scale);
 
     // we draw the source
-    cairo_set_dash(cr, dashed, 0, 0);
-    if((gui->group_selected == index)
-       && (gui->form_selected || gui->form_dragging))
-      cairo_set_line_width(cr, 2.5 / zoom_scale);
-    else
-      cairo_set_line_width(cr, 1.5 / zoom_scale);
-
-    dt_draw_set_color_overlay(cr, FALSE, 0.8);
     cairo_move_to(cr, gpt->source[nb * 6], gpt->source[nb * 6 + 1]);
 
-    for(int i = nb * 3; i < gpt->source_count; i++)
+    for(int i = _nb_ctrl_point(nb); i < gpt->source_count; i++)
       cairo_line_to(cr, gpt->source[i * 2], gpt->source[i * 2 + 1]);
 
     cairo_line_to(cr, gpt->source[nb * 6], gpt->source[nb * 6 + 1]);
-    cairo_stroke_preserve(cr);
 
-    if((gui->group_selected == index)
-       && (gui->form_selected || gui->form_dragging))
-      cairo_set_line_width(cr, 1.0 / zoom_scale);
-    else
-      cairo_set_line_width(cr, 0.5 / zoom_scale);
-    dt_draw_set_color_overlay(cr, TRUE, 0.8);
-    cairo_stroke(cr);
+    dt_masks_line_stroke
+      (cr, FALSE, TRUE,
+       (gui->group_selected == index) && (gui->form_selected || gui->form_dragging),
+       zoom_scale);
   }
 }
 
@@ -2460,7 +2447,7 @@ static void _path_bounding_box_raw(const float *const points,
   xmin = ymin = FLT_MAX;
   xmax = ymax = FLT_MIN;
 
-  for(int i = nb_corner * 3; i < num_borders; i++)
+  for(int i = _nb_ctrl_point(nb_corner); i < num_borders; i++)
   {
     // we look at the borders
     const float xx = border[i * 2];
@@ -2476,7 +2463,7 @@ static void _path_bounding_box_raw(const float *const points,
     ymin = MIN(yy, ymin);
     ymax = MAX(yy, ymax);
   }
-  for(int i = nb_corner * 3; i < num_points; i++)
+  for(int i = _nb_ctrl_point(nb_corner); i < num_points; i++)
   {
     // we look at the path too
     const float xx = points[i * 2];
@@ -2673,12 +2660,16 @@ static int _path_get_mask(const dt_iop_module_t *const module,
     int lasty2 = (int)points[(nbp - 2) * 2 + 1];
 
     int just_change_dir = 0;
-    for(int ii = nb_corner * 3; ii < 2 * nbp - nb_corner * 3; ii++)
+    for(int ii = _nb_ctrl_point(nb_corner);
+        ii < 2 * nbp - _nb_ctrl_point(nb_corner);
+        ii++)
     {
       // we are writing more than 1 loop in the case the dir in y change
       // exactly at start/end point
       int i = ii;
-      if(ii >= nbp) i = (ii - nb_corner * 3) % (nbp - nb_corner * 3) + nb_corner * 3;
+      if(ii >= nbp)
+        i = (ii - _nb_ctrl_point(nb_corner))
+          % (nbp - _nb_ctrl_point(nb_corner)) + _nb_ctrl_point(nb_corner);
       const int xx = (int)points[i * 2];
       const int yy = (int)points[i * 2 + 1];
 
@@ -2803,7 +2794,7 @@ static int _path_get_mask(const dt_iop_module_t *const module,
   float pf1[2] = { 0.0f };
   int last0[2] = { -100, -100 }, last1[2] = { -100, -100 };
   int next = 0;
-  for(int i = nb_corner * 3; i < border_count; i++)
+  for(int i = _nb_ctrl_point(nb_corner); i < border_count; i++)
   {
     p0[0] = points[i * 2];
     p0[1] = points[i * 2 + 1];
@@ -3101,7 +3092,7 @@ static int _path_get_mask_roi(const dt_iop_module_t *const module,
   const guint nb_corner = g_list_length(form->points);
 
   // we shift and scale down path and border
-  for(int i = nb_corner * 3; i < border_count; i++)
+  for(int i = _nb_ctrl_point(nb_corner); i < border_count; i++)
   {
     const float xx = border[2 * i];
     const float yy = border[2 * i + 1];
@@ -3114,7 +3105,7 @@ static int _path_get_mask_roi(const dt_iop_module_t *const module,
     border[2 * i] = xx * scale - px;
     border[2 * i + 1] = yy * scale - py;
   }
-  for(int i = nb_corner * 3; i < points_count; i++)
+  for(int i = _nb_ctrl_point(nb_corner); i < points_count; i++)
   {
     const float xx = points[2 * i];
     const float yy = points[2 * i + 1];
@@ -3123,7 +3114,7 @@ static int _path_get_mask_roi(const dt_iop_module_t *const module,
   }
 
   // now check if path is at least partially within roi
-  for(int i = nb_corner * 3; i < points_count; i++)
+  for(int i = _nb_ctrl_point(nb_corner); i < points_count; i++)
   {
     const int xx = points[i * 2];
     const int yy = points[i * 2 + 1];
@@ -3144,7 +3135,7 @@ static int _path_get_mask_roi(const dt_iop_module_t *const module,
     const int x = width / 2;
     const int y = height / 2;
 
-    for(int i = nb_corner * 3; i < points_count; i++)
+    for(int i = _nb_ctrl_point(nb_corner); i < points_count; i++)
     {
       const int yy = (int)points[2 * i + 1];
       if(yy != last && yy == y)
@@ -3163,7 +3154,7 @@ static int _path_get_mask_roi(const dt_iop_module_t *const module,
   }
 
   // now check if feather is at least partially within roi
-  for(int i = nb_corner * 3; i < border_count; i++)
+  for(int i = _nb_ctrl_point(nb_corner); i < border_count; i++)
   {
     const float xx = border[i * 2];
     const float yy = border[i * 2 + 1];
@@ -3228,8 +3219,8 @@ static int _path_get_mask_roi(const dt_iop_module_t *const module,
     // one pixel beyond height-1. this avoids need of special handling
     // of the last roi line in the following edge-flag polygon fill
     // algorithm.
-    const int crop_success = _path_crop_to_roi(cpoints + 2 * (nb_corner * 3),
-                                               points_count - nb_corner * 3,
+    const int crop_success = _path_crop_to_roi(cpoints + 2 * _nb_ctrl_point(nb_corner),
+                                               points_count - _nb_ctrl_point(nb_corner),
                                                0,
                                                width - 1,
                                                0,
@@ -3247,7 +3238,8 @@ static int _path_get_mask_roi(const dt_iop_module_t *const module,
     if(path_encircles_roi)
     {
       // roi lies completely within path
-      for(size_t k = 0; k < (size_t)width * height; k++) buffer[k] = 1.0f;
+      for(size_t k = 0; k < (size_t)width * height; k++)
+        buffer[k] = 1.0f;
     }
     else
     {
@@ -3257,7 +3249,7 @@ static int _path_get_mask_roi(const dt_iop_module_t *const module,
       float xlast = cpoints[(points_count - 1) * 2];
       float ylast = cpoints[(points_count - 1) * 2 + 1];
 
-      for(int i = nb_corner * 3; i < points_count; i++)
+      for(int i = _nb_ctrl_point(nb_corner); i < points_count; i++)
       {
         float xstart = xlast;
         float ystart = ylast;
@@ -3360,7 +3352,7 @@ static int _path_get_mask_roi(const dt_iop_module_t *const module,
     int last0[2] = { -100, -100 };
     int last1[2] = { -100, -100 };
     int next = 0;
-    for(int i = nb_corner * 3; i < border_count; i++)
+    for(int i = _nb_ctrl_point(nb_corner); i < border_count; i++)
     {
       p0[0] = floorf(points[i * 2] + 0.5f);
       p0[1] = ceilf(points[i * 2 + 1]);
