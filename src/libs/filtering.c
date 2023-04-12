@@ -1,6 +1,6 @@
 /*
     This file is part of darktable,
-    Copyright (C) 2022 darktable developers.
+    Copyright (C) 2022-2023 darktable developers.
 
     darktable is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -615,10 +615,9 @@ int set_params(dt_lib_module_t *self, const void *params, int size)
 }
 
 
-const char **views(dt_lib_module_t *self)
+dt_view_type_flags_t views(dt_lib_module_t *self)
 {
-  static const char *v[] = { "lighttable", "map", "print", NULL };
-  return v;
+  return DT_VIEW_LIGHTTABLE | DT_VIEW_MAP | DT_VIEW_PRINT;
 }
 
 uint32_t container(dt_lib_module_t *self)
@@ -2046,7 +2045,7 @@ static void _sort_history_pretty_print(const char *buf, char *out, size_t outsiz
       const dt_introspection_type_enum_tuple_t *list = _collection_sort_names;
       while(list->name && list->value != sortid) list++;
 
-      c = snprintf(out, outsize, "%s%s (%s)", (k > 0) ? " - " : "", list->name,
+      c = snprintf(out, outsize, "%s%s (%s)", (k > 0) ? " - " : "", _(list->name),
                    (sortorder) ? _("DESC") : _("ASC"));
       out += c;
       outsize -= c;

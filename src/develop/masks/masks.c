@@ -301,7 +301,7 @@ static void _set_group_name_from_module(dt_iop_module_t *module,
                                         dt_masks_form_t *grp)
 {
   gchar *module_label = dt_history_item_get_name(module);
-  snprintf(grp->name, sizeof(grp->name), "grp %s", module_label);
+  snprintf(grp->name, sizeof(grp->name), _("group `%s'"), module_label);
   g_free(module_label);
 }
 
@@ -412,7 +412,7 @@ int dt_masks_form_duplicate(dt_develop_t *dev, const int formid)
   fdest->source[0] = fbase->source[0];
   fdest->source[1] = fbase->source[1];
   fdest->version = fbase->version;
-  snprintf(fdest->name, sizeof(fdest->name), _("copy of %s"), fbase->name);
+  snprintf(fdest->name, sizeof(fdest->name), _("copy of `%s'"), fbase->name);
 
   darktable.develop->forms = g_list_append(dev->forms, fdest);
 
@@ -910,7 +910,7 @@ dt_masks_form_t *dt_masks_get_from_id(dt_develop_t *dev, const int id)
   return dt_masks_get_from_id_ext(dev->forms, id);
 }
 
-void dt_masks_read_masks_history(dt_develop_t *dev, const int imgid)
+void dt_masks_read_masks_history(dt_develop_t *dev, const dt_imgid_t imgid)
 {
   dt_dev_history_item_t *hist_item = NULL;
   dt_dev_history_item_t *hist_item_last = NULL;
@@ -920,8 +920,10 @@ void dt_masks_read_masks_history(dt_develop_t *dev, const int imgid)
   // clang-format off
   DT_DEBUG_SQLITE3_PREPARE_V2(
       dt_database_get(darktable.db),
-      "SELECT imgid, formid, form, name, version, points, points_count, source, num "
-      "FROM main.masks_history WHERE imgid = ?1 ORDER BY num",
+      "SELECT imgid, formid, form, name, version, points, points_count, source, num"
+      " FROM main.masks_history"
+      " WHERE imgid = ?1"
+      " ORDER BY num",
       -1, &stmt, NULL);
   // clang-format on
   DT_DEBUG_SQLITE3_BIND_INT(stmt, 1, imgid);
@@ -1012,7 +1014,7 @@ void dt_masks_read_masks_history(dt_develop_t *dev, const int imgid)
   dt_masks_replace_current_forms(dev, (hist_item_last)?hist_item_last->forms:NULL);
 }
 
-void dt_masks_write_masks_history_item(const int imgid,
+void dt_masks_write_masks_history_item(const dt_imgid_t imgid,
                                        const int num,
                                        dt_masks_form_t *form)
 {
@@ -1022,7 +1024,7 @@ void dt_masks_write_masks_history_item(const int imgid,
   // clang-format off
   DT_DEBUG_SQLITE3_PREPARE_V2
     (dt_database_get(darktable.db),
-     "INSERT INTO main.masks_history (imgid, num, formid, form, name, "
+     "INSERT INTO main.masks_history (imgid, num, formid, form, name,"
      "                                version, points, points_count,source)"
      " VALUES (?1, ?9, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
      -1, &stmt, NULL);
@@ -2688,6 +2690,24 @@ void dt_masks_draw_anchor(cairo_t *cr,
   cairo_stroke(cr);
 }
 
+void dt_masks_draw_ctrl(cairo_t *cr,
+                        const float x,
+                        const float y,
+                        const float zoom_scale,
+                        const gboolean selected)
+{
+  const float ctrl_size = DT_PIXEL_APPLY_DPI(selected ? 3.0f : 1.5f) / zoom_scale;
+
+  cairo_arc(cr, x, y, ctrl_size, 0, 2.0 * M_PI);
+
+  dt_draw_set_color_overlay(cr, TRUE, 0.8);
+  cairo_fill_preserve(cr);
+
+  cairo_set_line_width(cr, 1.0 / zoom_scale);
+  dt_draw_set_color_overlay(cr, FALSE, 0.8);
+  cairo_stroke(cr);
+}
+
 void dt_masks_draw_arrow(cairo_t *cr,
                          const float from_x,
                          const float from_y,
@@ -2699,7 +2719,7 @@ void dt_masks_draw_arrow(cairo_t *cr,
   const float pr_d = darktable.develop->preview_downsampling;
   const float dx = from_x - to_x;
   const float dy = from_y - to_y;
-  const float arrow_size = 24.0f * pr_d;
+  const float arrow_size = DT_PIXEL_APPLY_DPI(24.0f) * pr_d;
 
   const float arrow_scale = arrow_size / sqrtf(3.f * zoom_scale);
 
@@ -2753,17 +2773,17 @@ void dt_masks_stroke_arrow(cairo_t *cr,
   cairo_set_dash(cr, dashed, 0, 0);
 
   if((gui->group_selected == group) && (gui->form_selected || gui->form_dragging))
-    cairo_set_line_width(cr, 2.5 / zoom_scale);
+    cairo_set_line_width(cr, DT_PIXEL_APPLY_DPI(2.5) / zoom_scale);
   else
-    cairo_set_line_width(cr, 1.5 / zoom_scale);
+    cairo_set_line_width(cr, DT_PIXEL_APPLY_DPI(1.5) / zoom_scale);
 
   dt_draw_set_color_overlay(cr, FALSE, 0.8);
   cairo_stroke_preserve(cr);
 
   if((gui->group_selected == group) && (gui->form_selected || gui->form_dragging))
-    cairo_set_line_width(cr, 1.0 / zoom_scale);
+    cairo_set_line_width(cr, DT_PIXEL_APPLY_DPI(1.0) / zoom_scale);
   else
-    cairo_set_line_width(cr, 0.5 / zoom_scale);
+    cairo_set_line_width(cr, DT_PIXEL_APPLY_DPI(0.5) / zoom_scale);
 
   dt_draw_set_color_overlay(cr, TRUE, 0.8);
   cairo_stroke(cr);
@@ -2802,10 +2822,10 @@ void dt_masks_line_stroke(cairo_t *cr,
                           const gboolean selected,
                           const float zoom_scale)
 {
-  const double size_border     = 1.0;
-  const double size_source     = 1.5;
-  const double size_mask       = 2.5;
-  const double factor_selected = 1.9;
+  const double size_border     = DT_PIXEL_APPLY_DPI(1.0);
+  const double size_source     = DT_PIXEL_APPLY_DPI(1.5);
+  const double size_mask       = DT_PIXEL_APPLY_DPI(2.5);
+  const double factor_selected = DT_PIXEL_APPLY_DPI(1.9);
 
   double dashed[] = { 4.0, 4.0 };
   dashed[0] /= zoom_scale;
