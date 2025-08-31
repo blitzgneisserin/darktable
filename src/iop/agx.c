@@ -2178,8 +2178,21 @@ static void _notebook_page_changed(GtkNotebook *notebook, GtkWidget *page, const
       // pack to new parent
       gtk_box_pack_start(GTK_BOX(vbox), g->curve_basic_controls_box, FALSE, FALSE, 0);
 
+      // On the 'settings' page, move to second last position (before look box)
+      if(page_num == 0)
+      {
+        // Get all children of the vbox
+        GList *children = gtk_container_get_children(GTK_CONTAINER(vbox));
+        guint num_children = g_list_length(children);
+        g_list_free(children);
+
+        // Move to the position before the last one (before look box)
+        if(num_children > 1) {
+          gtk_box_reorder_child(GTK_BOX(vbox), g->curve_basic_controls_box, num_children - 2);
+        }
+      }
       // on the 'curve' page, move to top
-      if(page_num == 1)
+      else if(page_num == 1)
       {
         gtk_box_reorder_child(GTK_BOX(vbox), g->curve_basic_controls_box, 0);
       }
@@ -2188,6 +2201,7 @@ static void _notebook_page_changed(GtkNotebook *notebook, GtkWidget *page, const
     }
   }
 }
+
 
 static void _create_primaries_page(dt_iop_module_t *self, const dt_iop_agx_gui_data_t *g)
 {
@@ -2203,54 +2217,61 @@ static void _create_primaries_page(dt_iop_module_t *self, const dt_iop_agx_gui_d
 
 void gui_init(dt_iop_module_t *self)
 {
-  dt_iop_agx_gui_data_t *g = IOP_GUI_ALLOC(agx);
-  GtkWidget *main_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, DT_BAUHAUS_SPACE);
-  self->widget = main_vbox;
+    dt_iop_agx_gui_data_t *g = IOP_GUI_ALLOC(agx);
+    GtkWidget *main_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, DT_BAUHAUS_SPACE);
+    self->widget = main_vbox;
 
-  static dt_action_def_t notebook_def = {};
-  g->notebook = dt_ui_notebook_new(&notebook_def);
-  GtkWidget *notebook_widget = GTK_WIDGET(g->notebook);
-  dt_action_define_iop(self, NULL, N_("page"), notebook_widget, &notebook_def);
-  gtk_box_pack_start(GTK_BOX(main_vbox), notebook_widget, TRUE, TRUE, 0);
+    static dt_action_def_t notebook_def = {};
+    g->notebook = dt_ui_notebook_new(&notebook_def);
+    GtkWidget *notebook_widget = GTK_WIDGET(g->notebook);
+    dt_action_define_iop(self, NULL, N_("page"), notebook_widget, &notebook_def);
+    gtk_box_pack_start(GTK_BOX(main_vbox), notebook_widget, TRUE, TRUE, 0);
 
-  g->curve_basic_controls_box = _create_basic_curve_controls_box(self, g);
-  g->curve_graph_box = _create_curve_graph_box(self, g);
-  g->curve_advanced_controls_box = _create_advanced_box(self, g);
+    g->curve_basic_controls_box = _create_basic_curve_controls_box(self, g);
+    g->curve_graph_box = _create_curve_graph_box(self, g);
+    g->curve_advanced_controls_box = _create_advanced_box(self, g);
 
-  if(dt_conf_get_bool("plugins/darkroom/agx/enable_curve_tab"))
-  {
-    GtkWidget *settings_page = dt_ui_notebook_page(g->notebook, N_("settings"), _("main look and curve settings"));
-    self->widget = settings_page;
-    _add_look_box(self, g);
-    _add_exposure_box(self, g);
-    // we'll trigger a 'reparenting' to get the basic curve params here
+    if(dt_conf_get_bool("plugins/darkroom/agx/enable_curve_tab"))
+    {
+        GtkWidget *settings_page = dt_ui_notebook_page(g->notebook, N_("settings"), _("main look and curve settings"));
+        self->widget = settings_page;
 
-    GtkWidget *curve_page = dt_ui_notebook_page(g->notebook, N_("curve"), _("detailed curve settings"));
-    self->widget = curve_page;
-    gtk_box_pack_start(GTK_BOX(curve_page), g->curve_graph_box, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(curve_page), g->curve_advanced_controls_box, FALSE, FALSE, 0);
+        // Zuerst Exposure und Curve-Basic-Controls hinzufügen
+        _add_exposure_box(self, g);
+        gtk_box_pack_start(GTK_BOX(settings_page), g->curve_basic_controls_box, FALSE, FALSE, 0);
 
-    // reparent on tab switch
-    g_signal_connect(g->notebook, "switch-page", G_CALLBACK(_notebook_page_changed), self);
+        // Dann Look-Box am Ende hinzufügen
+        _add_look_box(self, g);
 
-    // initial 'reparenting' to the settings page
-    _notebook_page_changed(g->notebook, gtk_notebook_get_nth_page(g->notebook, 0), 0, self);
-  }
-  else
-  {
-    GtkWidget *settings_page = dt_ui_notebook_page(g->notebook, N_("settings"), _("main look and curve settings"));
-    self->widget = settings_page;
-    _add_look_box(self, g);
-    _add_exposure_box(self, g);
-    gtk_box_pack_start(GTK_BOX(settings_page), g->curve_basic_controls_box, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(settings_page), g->curve_graph_box, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(settings_page), g->curve_advanced_controls_box, FALSE, FALSE, 0);
-  }
+        GtkWidget *curve_page = dt_ui_notebook_page(g->notebook, N_("curve"), _("detailed curve settings"));
+        self->widget = curve_page;
+        gtk_box_pack_start(GTK_BOX(curve_page), g->curve_basic_controls_box, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(curve_page), g->curve_graph_box, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(curve_page), g->curve_advanced_controls_box, FALSE, FALSE, 0);
 
-  _create_primaries_page(self, g);
+        // reparent on tab switch
+        g_signal_connect(g->notebook, "switch-page", G_CALLBACK(_notebook_page_changed), self);
 
-  self->widget = main_vbox;
-  gui_update(self);
+        // initial 'reparenting' to the settings page
+        _notebook_page_changed(g->notebook, gtk_notebook_get_nth_page(g->notebook, 0), 0, self);
+    }
+    else
+    {
+        GtkWidget *settings_page = dt_ui_notebook_page(g->notebook, N_("settings"), _("main look and curve settings"));
+        self->widget = settings_page;
+
+        // In der 2-Tab-Version: Exposure → Curve-Basic-Controls → Curve-Graph → Curve-Advanced → Look
+        _add_exposure_box(self, g);
+        gtk_box_pack_start(GTK_BOX(settings_page), g->curve_basic_controls_box, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(settings_page), g->curve_graph_box, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(settings_page), g->curve_advanced_controls_box, FALSE, FALSE, 0);
+        _add_look_box(self, g); // Look-Box kommt ganz am Ende
+    }
+
+    _create_primaries_page(self, g);
+
+    self->widget = main_vbox;
+    gui_update(self);
 }
 
 static void _set_neutral_params(dt_iop_agx_params_t *p)
